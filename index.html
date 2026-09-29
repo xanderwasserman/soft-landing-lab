@@ -949,9 +949,11 @@
     const s = cam.scale;
     ctx.save();
     ctx.translate(pos[0], pos[1]);
-    // Screen y is down. Flip into a y-up local frame, then apply gimbal.
+    // Screen y is down. Flip into a y-up local frame. After that flip,
+    // rotate(+θ) tips the nose toward −x while thrust T sinθ goes +x,
+    // so the drawing uses −θ. Physics, gimbal command, and the HUD stay on θ.
     ctx.scale(s, -s);
-    ctx.rotate(state.theta);
+    ctx.rotate(-state.theta);
     if (state.phase === "crash" && state.report) {
       const side = state.report.vx < -0.2 ? -1 : 1;
       const hard = state.report.vy < -8 ? 0.22 : 0.08;
