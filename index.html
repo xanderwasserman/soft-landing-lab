@@ -1,0 +1,1332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="dark" />
+<title>Soft Landing Lab</title>
+<style>
+  :root {
+    --ink: #ebe6dc;
+    --dim: #9a9286;
+    --faint: rgba(235, 230, 220, 0.14);
+    --amber: #e2a15c;
+    --sage: #9dbea6;
+    --coral: #d67b6a;
+    --panel: rgba(8, 9, 12, 0.82);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #07080c;
+    color: var(--ink);
+    font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+    user-select: none;
+    touch-action: none;
+  }
+
+  canvas#world {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: crosshair;
+  }
+
+  #hud {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 22px 24px;
+    gap: 16px;
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--faint);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    padding: 14px 16px 12px;
+    min-width: 228px;
+  }
+
+  .eyebrow {
+    margin: 0;
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--amber);
+  }
+
+  h1 {
+    margin: 4px 0 12px;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+
+  dl {
+    margin: 0;
+    display: grid;
+    gap: 7px;
+  }
+
+  dl div {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 18px;
+    align-items: baseline;
+  }
+
+  dt {
+    margin: 0;
+    color: var(--dim);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  dd {
+    margin: 0;
+    font-family: ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, monospace;
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.01em;
+  }
+
+  dd.good { color: var(--sage); }
+  dd.warn { color: var(--amber); }
+  dd.bad { color: var(--coral); }
+
+  .track {
+    margin-top: 12px;
+    height: 2px;
+    background: rgba(235, 230, 220, 0.12);
+    position: relative;
+  }
+
+  .track > span {
+    display: block;
+    height: 100%;
+    width: 0%;
+    background: var(--ink);
+  }
+
+  .track.fuel > span { background: var(--sage); }
+  .track.fuel.warn > span { background: var(--amber); }
+  .track.fuel.bad > span { background: var(--coral); }
+
+  #status {
+    margin: 10px 0 0;
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+
+  .side-note {
+    margin: 8px 0 0;
+    color: var(--dim);
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 11px;
+    line-height: 1.45;
+  }
+
+  #legend {
+    position: fixed;
+    left: 50%;
+    bottom: 22px;
+    transform: translateX(-50%);
+    text-align: center;
+    width: min(680px, calc(100% - 150px));
+    pointer-events: none;
+  }
+
+  #legend .tip {
+    margin: 0;
+    font-size: 14px;
+    letter-spacing: 0.01em;
+    color: var(--ink);
+  }
+
+  #legend .keys {
+    margin: 6px 0 0;
+    color: var(--dim);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+  }
+
+  #outcome {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    align-items: start;
+    justify-content: center;
+    padding-top: 16vh;
+    background: rgba(5, 6, 10, 0.28);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 280ms ease;
+  }
+
+  body.ended #radar-panel { visibility: hidden; }
+
+  #outcome.show {
+    opacity: 1;
+    pointer-events: auto;
+    cursor: pointer;
+    z-index: 4;
+  }
+
+  #outcome .card {
+    text-align: center;
+    padding: 20px 32px 16px;
+    max-width: min(34rem, calc(100vw - 2.5rem));
+    background: rgba(7, 8, 12, 0.97);
+    border: 1px solid rgba(235, 230, 220, 0.14);
+  }
+
+  #outcome .kicker {
+    margin: 0 0 8px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    font-size: 11px;
+    color: var(--dim);
+  }
+
+  #outcome h2 {
+    margin: 0;
+    font-weight: 500;
+    font-size: clamp(26px, 4.6vw, 54px);
+    letter-spacing: 0.12em;
+    text-indent: 0.12em;
+    white-space: nowrap;
+  }
+
+  #outcome.win h2 { color: var(--sage); }
+  #outcome.crash h2 { color: var(--coral); }
+  #outcome.dry h2 { color: var(--amber); }
+
+  #outcome .detail {
+    margin: 12px 0 0;
+    color: var(--ink);
+    font-size: 15px;
+  }
+
+  #outcome .again {
+    margin: 14px 0 0;
+    color: var(--dim);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .hold {
+    position: fixed;
+    bottom: 18px;
+    width: 46px;
+    height: 46px;
+    border-radius: 2px;
+    border: 1px solid var(--faint);
+    background: rgba(8, 9, 12, 0.55);
+    color: var(--ink);
+    font: inherit;
+    font-size: 16px;
+    pointer-events: auto;
+    cursor: pointer;
+  }
+
+  .hold:focus-visible { outline: 1px solid var(--amber); outline-offset: 2px; }
+
+  #gimbal-left { left: 18px; }
+  #gimbal-right { right: 18px; }
+  #reset {
+    position: fixed;
+    top: 22px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: auto;
+    height: 32px;
+    padding: 0 12px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    font-size: 10px;
+    pointer-events: auto;
+  }
+
+  @media (max-width: 720px) {
+    #hud { padding: 10px 10px 0; flex-direction: column; }
+    .panel { min-width: 0; width: 100%; padding: 10px 12px 8px; }
+    .panel dl { grid-template-columns: 1fr 1fr; gap: 4px 14px; }
+    h1 { margin: 2px 0 8px; }
+    #radar-panel { display: none; }
+    #legend { bottom: 76px; width: calc(100% - 124px); }
+    #legend .tip { font-size: 13px; }
+    #reset {
+      top: auto;
+      bottom: 16px;
+      height: 46px;
+      padding: 0 14px;
+    }
+  }
+</style>
+</head>
+<body>
+<canvas id="world" aria-label="Soft landing simulation"></canvas>
+
+<div id="hud">
+  <section class="panel" aria-label="Flight instruments">
+    <p class="eyebrow">Earth · g = 9.81 m/s²</p>
+    <h1>Soft Landing Lab</h1>
+    <dl>
+      <div><dt>Altitude</dt><dd id="alt">—</dd></div>
+      <div><dt>Vertical</dt><dd id="vert">—</dd></div>
+      <div><dt>Fuel</dt><dd id="fuel">—</dd></div>
+      <div><dt>Throttle</dt><dd id="thr">—</dd></div>
+      <div><dt>T / W</dt><dd id="tw">—</dd></div>
+    </dl>
+    <div class="track fuel" id="fuel-track"><span id="fuel-fill"></span></div>
+    <div class="track" id="thr-track"><span id="thr-fill"></span></div>
+    <p class="side-note" id="lateral">Offset — · drift — · gimbal —</p>
+    <p id="status">Armed</p>
+  </section>
+  <section class="panel" id="radar-panel" aria-label="Pad radar">
+    <p class="eyebrow">Pad · top view</p>
+    <canvas id="radar" width="168" height="168"></canvas>
+    <p class="side-note">Crosshairs mark the deck center. The arc ahead of the vehicle is an engine-out coast.</p>
+  </section>
+</div>
+
+<div id="legend">
+  <p class="tip">Best part is no part — delete excess throttle.</p>
+  <p class="keys">Hold Space or press and hold to throttle · A / D gimbal · R reset</p>
+</div>
+
+<button class="hold" id="reset" type="button">Reset</button>
+<button class="hold" id="gimbal-left" type="button" aria-label="Gimbal left">←</button>
+<button class="hold" id="gimbal-right" type="button" aria-label="Gimbal right">→</button>
+
+<div id="outcome" role="status" aria-live="polite">
+  <div class="card">
+    <p class="kicker" id="kicker"></p>
+    <h2 id="headline"></h2>
+    <p class="detail" id="detail"></p>
+    <p class="again">R or click to reset</p>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // Constants match DESIGN.md. Units are SI.
+  const G = 9.81;
+  const ISP = 311;
+  const VE = ISP * G;
+  const T_MAX = 15600;
+  const M_DRY = 920;
+  const M_FUEL0 = 58;
+  const TAU = 0.28;
+  const FIXED = 1 / 240;
+  const GIMBAL_MAX = 12 * Math.PI / 180;
+  const GIMBAL_RATE = 40 * Math.PI / 180;
+  const GIMBAL_RETURN = 32 * Math.PI / 180;
+  const PAD_HALF = 16;
+  const SOFT_SINK = 3.2;
+  const SOFT_CLIMB = 1.3;
+  const SOFT_LATERAL = 1.8;
+  const SOFT_TILT = 8 * Math.PI / 180;
+  const BELL = 4.95;
+  const FOOT = 5.55;
+
+  const canvas = document.getElementById("world");
+  const ctx = canvas.getContext("2d");
+  const radar = document.getElementById("radar");
+  const rctx = radar.getContext("2d");
+  const outcomeEl = document.getElementById("outcome");
+
+  const $ = (id) => document.getElementById(id);
+
+  let dpr = 1;
+  let acc = 0;
+  let last = performance.now();
+  let simTime = 0;
+  const keys = new Set();
+  let pointerThrottle = false;
+  let buttonGimbal = 0;
+
+  const stars = makeStars(140);
+  const hills = makeHills();
+
+  const state = blank();
+
+  function blank() {
+    return {
+      // CG altitude. Contact altitude is y minus the current foot drop.
+      y: 52 + BELL,
+      x: -7,
+      vy: -2.4,
+      vx: 0.35,
+      fuel: M_FUEL0,
+      u: 0,
+      theta: 0,
+      deploy: 0,
+      arm: 1.8,
+      phase: "arm",
+      report: null,
+      dust: [],
+      ring: 0
+    };
+  }
+
+  function footDrop(deploy) {
+    return BELL + (FOOT - BELL) * deploy;
+  }
+
+  function aglOf(s) {
+    return s.y - footDrop(s.deploy);
+  }
+
+  function reset(armTime) {
+    const fresh = blank();
+    fresh.arm = armTime;
+    fresh.phase = armTime > 0 ? "arm" : "flight";
+    Object.assign(state, fresh);
+    state.dust = [];
+    acc = 0;
+    document.body.classList.remove("ended");
+    hideOutcome();
+  }
+
+  function massOf(s) {
+    return M_DRY + Math.max(0, s.fuel);
+  }
+
+  // One fixed step of semi-implicit Euler. See DESIGN.md.
+  function step(dt) {
+    if (state.phase === "win" || state.phase === "crash" || state.phase === "dry") {
+      state.ring = Math.min(1, state.ring + dt * 0.45);
+      return;
+    }
+
+    if (state.phase === "arm") {
+      state.arm -= dt;
+      if (state.arm <= 0 || throttleCommand()) {
+        state.arm = 0;
+        state.phase = "flight";
+      } else {
+        return;
+      }
+    }
+
+    const gimbal = gimbalCommand();
+    if (gimbal !== 0) {
+      state.theta += gimbal * GIMBAL_RATE * dt;
+    } else {
+      const back = -Math.sign(state.theta) * GIMBAL_RETURN * dt;
+      state.theta = Math.abs(back) > Math.abs(state.theta) ? 0 : state.theta + back;
+    }
+    state.theta = clamp(state.theta, -GIMBAL_MAX, GIMBAL_MAX);
+
+    const uCmd = throttleCommand() && state.fuel > 0 ? 1 : 0;
+    state.u += (uCmd - state.u) * (1 - Math.exp(-dt / TAU));
+    if (state.fuel <= 0) state.u = 0;
+
+    const m = massOf(state);
+    let T = state.u * T_MAX;
+    const dFuel = (T / VE) * dt;
+    if (dFuel >= state.fuel) {
+      if (state.fuel > 0 && dFuel > 0) T *= state.fuel / dFuel;
+      state.fuel = 0;
+      state.u = 0;
+    } else {
+      state.fuel -= dFuel;
+    }
+
+    const ax = (T * Math.sin(state.theta)) / m;
+    const ay = (T * Math.cos(state.theta)) / m - G;
+    state.vx += ax * dt;
+    state.vy += ay * dt;
+    state.x += state.vx * dt;
+    state.y += state.vy * dt;
+
+    const aglPreview = state.y - BELL;
+    const deployTarget = aglPreview < 24 ? 1 : 0;
+    state.deploy += (deployTarget - state.deploy) * Math.min(1, dt * 2.8);
+
+    const agl = aglOf(state);
+    if (agl < 14 && state.u > 0.25) spawnDust(dt);
+
+    ageDust(dt);
+
+    if (agl <= 0) {
+      state.y -= agl;
+      judgeContact();
+      return;
+    }
+
+    if (state.fuel <= 1e-6 && agl > 1) {
+      const vImp = Math.sqrt(state.vy * state.vy + 2 * G * agl);
+      if (vImp > SOFT_SINK) {
+        finish("dry", {
+          agl: agl,
+          vy: state.vy,
+          vx: state.vx,
+          x: state.x,
+          theta: state.theta,
+          fuel: 0,
+          vImp: vImp
+        });
+      }
+    }
+  }
+
+  function judgeContact() {
+    const onPad = Math.abs(state.x) <= PAD_HALF;
+    const softVert = state.vy >= -SOFT_SINK && state.vy <= SOFT_CLIMB;
+    const softLat = Math.abs(state.vx) <= SOFT_LATERAL;
+    const softTilt = Math.abs(state.theta) <= SOFT_TILT;
+    const report = {
+      agl: 0,
+      vy: state.vy,
+      vx: state.vx,
+      x: state.x,
+      theta: state.theta,
+      fuel: state.fuel
+    };
+    state.vy = Math.min(state.vy, 0);
+    state.u = 0;
+    if (onPad && softVert && softLat && softTilt) {
+      state.vx = 0;
+      state.theta = 0;
+      state.deploy = 1;
+      finish("win", report);
+      return;
+    }
+    finish("crash", report);
+  }
+
+  function finish(phase, report) {
+    state.phase = phase;
+    state.report = report;
+    state.ring = 0;
+    document.body.classList.add("ended");
+    showOutcome(phase, report);
+  }
+
+  function throttleCommand() {
+    return keys.has("Space") || pointerThrottle;
+  }
+
+  function gimbalCommand() {
+    const left = keys.has("left") || buttonGimbal < 0;
+    const right = keys.has("right") || buttonGimbal > 0;
+    if (left && !right) return -1;
+    if (right && !left) return 1;
+    return 0;
+  }
+
+  function showOutcome(phase, report) {
+    const headline = phase === "win" ? "WIN" : phase === "crash" ? "CRASH" : "OUT OF FUEL";
+    const kicker = phase === "win" ? "Touchdown" : phase === "crash" ? "Contact" : "Engine out";
+    $("kicker").textContent = kicker;
+    $("headline").textContent = headline;
+    $("detail").textContent = detailFor(phase, report);
+    outcomeEl.className = "show " + phase;
+  }
+
+  function hideOutcome() {
+    outcomeEl.className = "";
+    $("headline").textContent = "";
+    $("detail").textContent = "";
+  }
+
+  function detailFor(phase, r) {
+    const sink = Math.abs(Math.min(0, r.vy)).toFixed(1);
+    if (phase === "win") {
+      const pct = Math.round((100 * r.fuel) / M_FUEL0);
+      return "Sink " + sink + " m/s on the pad, with " + pct + "% propellant left.";
+    }
+    if (phase === "dry") {
+      return "Tanks empty at " + r.agl.toFixed(0) + " m. Impact speed was already " + r.vImp.toFixed(0) + " m/s.";
+    }
+    if (Math.abs(r.x) > PAD_HALF) {
+      const miss = (Math.abs(r.x) - PAD_HALF).toFixed(1);
+      return "Missed the pad by " + miss + " m.";
+    }
+    if (Math.abs(r.theta) > SOFT_TILT) {
+      return "Touchdown at " + (Math.abs(r.theta) * 180 / Math.PI).toFixed(0) + "°. The stack was not upright.";
+    }
+    if (Math.abs(r.vx) > SOFT_LATERAL) {
+      return "Drift " + Math.abs(r.vx).toFixed(1) + " m/s. The pad wants it under " + SOFT_LATERAL.toFixed(1) + ".";
+    }
+    if (r.vy < -SOFT_SINK) {
+      return "Sink " + sink + " m/s. Soft contact is " + SOFT_SINK.toFixed(1) + " m/s or less.";
+    }
+    return "Still climbing at " + r.vy.toFixed(1) + " m/s.";
+  }
+
+  function spawnDust(dt) {
+    const n = state.u * dt * 28;
+    for (let i = 0; i < n; i++) {
+      if (state.dust.length > 48) state.dust.shift();
+      state.dust.push({
+        x: state.x + (Math.random() - 0.5) * 6,
+        y: Math.random() * 0.8,
+        vx: (Math.random() - 0.5) * 4,
+        vy: 0.4 + Math.random() * 1.4,
+        life: 0.35 + Math.random() * 0.4,
+        age: 0
+      });
+    }
+  }
+
+  function ageDust(dt) {
+    for (let i = state.dust.length - 1; i >= 0; i--) {
+      const p = state.dust[i];
+      p.age += dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      if (p.age > p.life) state.dust.splice(i, 1);
+    }
+  }
+
+  function syncHud() {
+    const agl = Math.max(0, aglOf(state));
+    const m = massOf(state);
+    const tw = (state.u * T_MAX) / (m * G);
+    const fuelPct = clamp((100 * state.fuel) / M_FUEL0, 0, 100);
+    const thrPct = clamp(state.u * 100, 0, 100);
+
+    $("alt").textContent = agl.toFixed(1) + " m";
+    const vert = $("vert");
+    vert.textContent = verticalText(state.vy);
+    vert.className = vertClass(agl, state.vy);
+
+    const fuel = $("fuel");
+    fuel.textContent = Math.round(fuelPct) + "%";
+    fuel.className = fuelPct < 12 ? "bad" : fuelPct < 28 ? "warn" : "";
+
+    $("thr").textContent = Math.round(thrPct) + "%";
+    const twEl = $("tw");
+    twEl.textContent = tw.toFixed(2);
+    twEl.className = tw >= 1 ? "warn" : "";
+
+    $("fuel-fill").style.width = fuelPct.toFixed(1) + "%";
+    $("thr-fill").style.width = thrPct.toFixed(1) + "%";
+    $("fuel-track").className = "track fuel" + (fuelPct < 12 ? " bad" : fuelPct < 28 ? " warn" : "");
+
+    const side = state.x < -0.5 ? "left" : state.x > 0.5 ? "right" : "on center";
+    const gimbalDeg = (state.theta * 180 / Math.PI);
+    $("lateral").textContent =
+      "Offset " + Math.abs(state.x).toFixed(1) + " m " + side +
+      "  ·  drift " + signed(state.vx) + " m/s" +
+      "  ·  gimbal " + signed(gimbalDeg) + "°";
+
+    $("status").textContent = statusText();
+  }
+
+  function statusText() {
+    if (state.phase === "arm") return "Armed · drop in " + Math.max(0, state.arm).toFixed(1) + " s";
+    if (state.phase === "win") return "Win";
+    if (state.phase === "crash") return "Crash";
+    if (state.phase === "dry") return "Out of fuel";
+    if (state.fuel <= 1e-4) return "Tanks dry";
+    return "In flight";
+  }
+
+  function verticalText(vy) {
+    const speed = Math.abs(vy).toFixed(1);
+    if (vy < -0.05) return speed + " m/s down";
+    if (vy > 0.05) return speed + " m/s up";
+    return "0.0 m/s";
+  }
+
+  function vertClass(agl, vy) {
+    if (vy < -12) return "bad";
+    if (agl < 18 && vy >= -SOFT_SINK && vy <= 0.4) return "good";
+    if (vy < -6) return "warn";
+    return "";
+  }
+
+  function resize() {
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.max(1, Math.round(rect.width * dpr));
+    canvas.height = Math.max(1, Math.round(rect.height * dpr));
+  }
+
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    if (!document.hidden) {
+      acc += dt;
+      let guard = 0;
+      while (acc >= FIXED && guard++ < 24) {
+        step(FIXED);
+        simTime += FIXED;
+        acc -= FIXED;
+      }
+      syncHud();
+      draw(now / 1000);
+      drawRadar();
+    }
+    requestAnimationFrame(frame);
+  }
+
+  function camera(w, h) {
+    // Keep the deck above the footer, and on a phone keep the vehicle below the HUD.
+    // Once the hopper climbs out of the landing window, follow it instead of shrinking it to a speck.
+    const narrow = w < 740;
+    const aim = function (scale) {
+      return Math.abs(state.x) + 28 < w / scale ? state.x * 0.42 : state.x * 0.72;
+    };
+    if (state.y > 120) {
+      const scale = narrow ? 4.2 : 5.4;
+      return { scale: scale, ground: h * 0.62 + state.y * scale, look: aim(scale), w: w, h: h };
+    }
+    const groundScreen = h * (narrow ? 0.7 : 0.76);
+    const topMargin = narrow ? Math.min(h * 0.34, 250) : 96;
+    const available = Math.max(90, groundScreen - topMargin);
+    const worldSpan = Math.max(narrow ? 40 : 24, state.y + (narrow ? 14 : 9));
+    const maxScale = (h * (narrow ? 0.32 : 0.42)) / 16;
+    const scale = clamp(available / worldSpan, 1.15, maxScale);
+    return { scale: scale, ground: groundScreen, look: aim(scale), w: w, h: h };
+  }
+
+  function worldToScreen(cam, x, y) {
+    return [
+      cam.w / 2 + (x - cam.look) * cam.scale,
+      cam.ground - y * cam.scale
+    ];
+  }
+
+  function draw(time) {
+    const w = canvas.width / dpr;
+    const h = canvas.height / dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    const sky = ctx.createLinearGradient(0, 0, 0, h);
+    sky.addColorStop(0, "#07080d");
+    sky.addColorStop(0.55, "#10151e");
+    sky.addColorStop(1, "#1a140f");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, w, h);
+
+    drawStars(time, w, h);
+    drawMoon(w, h);
+
+    const cam = camera(w, h);
+    drawHorizon(cam);
+    drawHills(cam);
+    drawGround(cam);
+    drawPad(cam, time);
+    drawRangePole(cam);
+    drawPredictor(cam);
+    drawDust(cam);
+    drawShip(cam, time);
+    drawReticle(cam);
+    drawScale(cam);
+    drawVignette(w, h);
+  }
+
+  function drawStars(time, w, h) {
+    for (let i = 0; i < stars.length; i++) {
+      const s = stars[i];
+      const twinkle = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(time * s.speed + s.phase));
+      ctx.globalAlpha = s.a * twinkle;
+      ctx.fillStyle = s.warm ? "#f0e2c8" : "#d5dbe4";
+      ctx.beginPath();
+      ctx.arc(s.nx * w, s.ny * h * 0.72, s.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawMoon(w, h) {
+    const x = w * 0.42;
+    const y = h * 0.11;
+    const glow = ctx.createRadialGradient(x, y, 6, x, y, 46);
+    glow.addColorStop(0, "rgba(239, 232, 214, 0.28)");
+    glow.addColorStop(1, "rgba(239, 232, 214, 0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(x, y, 46, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#efe8dc";
+    ctx.beginPath();
+    ctx.arc(x, y, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(80, 76, 68, 0.45)";
+    ctx.beginPath();
+    ctx.arc(x - 2, y + 1, 2.6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawHorizon(cam) {
+    const y = cam.ground;
+    const haze = ctx.createLinearGradient(0, y - 80, 0, y + 10);
+    haze.addColorStop(0, "rgba(180, 140, 90, 0)");
+    haze.addColorStop(1, "rgba(180, 120, 70, 0.08)");
+    ctx.fillStyle = haze;
+    ctx.fillRect(0, y - 80, cam.w, 90);
+  }
+
+  function drawHills(cam) {
+    ctx.beginPath();
+    const left = worldToScreen(cam, -220, 0);
+    ctx.moveTo(left[0], cam.ground);
+    for (let i = 0; i < hills.length; i++) {
+      const p = worldToScreen(cam, hills[i].x, hills[i].y);
+      ctx.lineTo(p[0], Math.min(cam.ground, p[1]));
+    }
+    const right = worldToScreen(cam, 220, 0);
+    ctx.lineTo(right[0], cam.ground);
+    ctx.closePath();
+    ctx.fillStyle = "#161411";
+    ctx.fill();
+  }
+
+  function drawGround(cam) {
+    const groundFill = ctx.createLinearGradient(0, cam.ground, 0, cam.h);
+    groundFill.addColorStop(0, "#1a1814");
+    groundFill.addColorStop(0.2, "#12110e");
+    groundFill.addColorStop(1, "#0c0b09");
+    ctx.fillStyle = groundFill;
+    ctx.fillRect(0, cam.ground, cam.w, cam.h - cam.ground + 2);
+    ctx.strokeStyle = "rgba(90, 78, 64, 0.45)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, cam.ground + 0.5);
+    ctx.lineTo(cam.w, cam.ground + 0.5);
+    ctx.stroke();
+
+    ctx.strokeStyle = "rgba(235, 230, 220, 0.05)";
+    const left = cam.look - cam.w / cam.scale;
+    const first = Math.floor(left / 10) * 10;
+    for (let x = first; x < left + cam.w / cam.scale + 10; x += 10) {
+      const p = worldToScreen(cam, x, 0);
+      ctx.beginPath();
+      ctx.moveTo(p[0], cam.ground);
+      ctx.lineTo(p[0], cam.ground + 7);
+      ctx.stroke();
+    }
+  }
+
+  function drawPad(cam, time) {
+    const half = PAD_HALF;
+    const apronL = worldToScreen(cam, -half - 10, 0);
+    const apronR = worldToScreen(cam, half + 10, 0);
+    ctx.fillStyle = "#24211c";
+    ctx.fillRect(apronL[0], cam.ground, apronR[0] - apronL[0], 14);
+
+    const deckL = worldToScreen(cam, -half, 0);
+    const deckR = worldToScreen(cam, half, 0);
+    const face = Math.max(16, 1.15 * cam.scale);
+    ctx.fillStyle = "#343b46";
+    ctx.fillRect(deckL[0], deckL[1] - 1, deckR[0] - deckL[0], face);
+
+    ctx.fillStyle = "rgba(214, 206, 190, 0.85)";
+    ctx.fillRect(deckL[0], deckL[1] - 1, deckR[0] - deckL[0], 2);
+
+    const midY = deckL[1] + face * 0.45;
+    const rx = Math.min(half * cam.scale * 0.62, 70);
+    const ry = Math.max(6, Math.min(face * 0.28, 16));
+    ctx.strokeStyle = "rgba(235, 230, 220, 0.88)";
+    ctx.lineWidth = 1.25;
+    ctx.beginPath();
+    ctx.ellipse(worldToScreen(cam, 0, 0)[0], midY, rx, ry, 0, 0, Math.PI * 2);
+    ctx.moveTo(worldToScreen(cam, 0, 0)[0] - rx, midY);
+    ctx.lineTo(worldToScreen(cam, 0, 0)[0] + rx, midY);
+    ctx.moveTo(worldToScreen(cam, 0, 0)[0], midY - ry);
+    ctx.lineTo(worldToScreen(cam, 0, 0)[0], midY + ry);
+    ctx.stroke();
+
+    drawLamp(cam, -half, time, 0);
+    drawLamp(cam, half, time, 1.7);
+  }
+
+  function drawLamp(cam, x, time, phase) {
+    const base = worldToScreen(cam, x, 0);
+    const head = worldToScreen(cam, x, 4.4);
+    ctx.strokeStyle = "#8a8175";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(base[0], base[1]);
+    ctx.lineTo(head[0], head[1]);
+    ctx.stroke();
+    const blink = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(time * 2.2 + phase));
+    const glow = ctx.createRadialGradient(head[0], head[1], 1, head[0], head[1], 28);
+    glow.addColorStop(0, "rgba(226, 161, 92, " + (0.55 * blink) + ")");
+    glow.addColorStop(1, "rgba(226, 161, 92, 0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(head[0], head[1], 28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#f0d2a4";
+    ctx.beginPath();
+    ctx.arc(head[0], head[1], 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawRangePole(cam) {
+    if (cam.ground > cam.h) return;
+    const x = -PAD_HALF - 14;
+    const top = worldToScreen(cam, x, 60);
+    const bot = worldToScreen(cam, x, 0);
+    ctx.strokeStyle = "rgba(235, 230, 220, 0.28)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(bot[0], bot[1]);
+    ctx.lineTo(top[0], top[1]);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(235, 230, 220, 0.55)";
+    ctx.font = "11px ui-monospace, Menlo, Consolas, monospace";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    for (let hgt = 10; hgt <= 60; hgt += 10) {
+      const p = worldToScreen(cam, x, hgt);
+      ctx.beginPath();
+      ctx.moveTo(p[0] - 6, p[1]);
+      ctx.lineTo(p[0] + (hgt % 20 === 0 ? 0 : -2), p[1]);
+      ctx.stroke();
+      if (hgt % 20 === 0) ctx.fillText(String(hgt), p[0] - 8, p[1]);
+    }
+  }
+
+  function drawPredictor(cam) {
+    if (state.phase !== "arm" && state.phase !== "flight") return;
+    // Engine-out coast, so the arc shows the cost of deleting the throttle.
+    let x = state.x;
+    let y = state.y;
+    let vx = state.vx;
+    let vy = state.vy;
+    const drop = footDrop(state.deploy);
+    const dt = 0.18;
+    ctx.fillStyle = "rgba(214, 224, 232, 0.75)";
+    for (let i = 0; i < 18; i++) {
+      vy -= G * dt;
+      x += vx * dt;
+      y += vy * dt;
+      const contact = y - drop;
+      if (contact <= 0) {
+        const p = worldToScreen(cam, x, 0.35);
+        ctx.globalAlpha = 0.9;
+        ctx.beginPath();
+        ctx.arc(p[0], p[1], 2.6, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      const p = worldToScreen(cam, x, y);
+      ctx.globalAlpha = 0.8 - i * 0.035;
+      ctx.beginPath();
+      ctx.arc(p[0], p[1], 1.7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawDust(cam) {
+    for (let i = 0; i < state.dust.length; i++) {
+      const p = state.dust[i];
+      const s = worldToScreen(cam, p.x, p.y);
+      const a = (1 - p.age / p.life) * 0.35;
+      ctx.fillStyle = "rgba(186, 168, 140, " + a + ")";
+      ctx.fillRect(s[0], s[1], 2, 2);
+    }
+  }
+
+  function drawShip(cam, time) {
+    const pos = worldToScreen(cam, state.x, state.y);
+    const s = cam.scale;
+    ctx.save();
+    ctx.translate(pos[0], pos[1]);
+    // Screen y is down. Flip into a y-up local frame, then apply gimbal.
+    ctx.scale(s, -s);
+    ctx.rotate(state.theta);
+    if (state.phase === "crash" && state.report) {
+      const side = state.report.vx < -0.2 ? -1 : 1;
+      const hard = state.report.vy < -8 ? 0.22 : 0.08;
+      ctx.rotate(side * hard + clamp(state.report.vx, -4, 4) * 0.04);
+    }
+
+    const near = Math.max(0, 1 - Math.max(0, aglOf(state)) / 18);
+    if (state.u > 0.04 && near > 0.05 && state.phase === "flight") {
+      const glow = ctx.createRadialGradient(0, -6, 0.2, 0, -8, 6);
+      glow.addColorStop(0, "rgba(226, 150, 70, " + (0.25 * state.u * near) + ")");
+      glow.addColorStop(1, "rgba(226, 150, 70, 0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(0, -7, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    drawFlame(time);
+    drawLegs();
+    drawFlaps();
+    drawHull();
+    ctx.restore();
+
+    // Contact shadow in screen space.
+    const agl = Math.max(0, aglOf(state));
+    const shade = Math.max(0, 0.4 - agl / 30);
+    if (shade > 0.02) {
+      const gnd = worldToScreen(cam, state.x, 0.15);
+      ctx.save();
+      ctx.translate(gnd[0], gnd[1]);
+      ctx.scale(1, 0.35);
+      ctx.fillStyle = "rgba(0, 0, 0, " + shade + ")";
+      ctx.beginPath();
+      ctx.arc(0, 0, 1.6 * s, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    if (state.phase === "win" && state.ring > 0) {
+      const gnd = worldToScreen(cam, 0, 0.6);
+      ctx.strokeStyle = "rgba(157, 190, 166, " + (1 - state.ring) * 0.8 + ")";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(gnd[0], gnd[1], (8 + 28 * state.ring) * (s / 12), 4 + 6 * state.ring, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  function drawFlame(time) {
+    const u = state.phase === "flight" || state.phase === "arm" ? state.u : 0;
+    if (u < 0.03) return;
+    const flicker = 0.9 + 0.1 * Math.sin(time * 43) + 0.05 * Math.sin(time * 97);
+    const len = (1.3 + u * 7.4) * flicker;
+    const half = 0.42 + u * 0.7;
+    const y0 = -BELL;
+    const grd = ctx.createLinearGradient(0, y0, 0, y0 - len);
+    grd.addColorStop(0, "rgba(255, 250, 240, 0.95)");
+    grd.addColorStop(0.16, "rgba(255, 196, 110, 0.9)");
+    grd.addColorStop(0.5, "rgba(240, 100, 40, 0.45)");
+    grd.addColorStop(1, "rgba(240, 70, 30, 0)");
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.moveTo(-0.32, y0);
+    ctx.quadraticCurveTo(-half, y0 - len * 0.42, (Math.sin(time * 30) * 0.15), y0 - len);
+    ctx.quadraticCurveTo(half, y0 - len * 0.42, 0.32, y0);
+    ctx.fill();
+
+    const core = ctx.createLinearGradient(0, y0, 0, y0 - len * 0.55);
+    core.addColorStop(0, "rgba(255, 255, 250, 0.95)");
+    core.addColorStop(1, "rgba(255, 210, 140, 0)");
+    ctx.fillStyle = core;
+    ctx.beginPath();
+    ctx.moveTo(-0.14, y0);
+    ctx.quadraticCurveTo(-0.18, y0 - len * 0.3, 0, y0 - len * 0.55);
+    ctx.quadraticCurveTo(0.18, y0 - len * 0.3, 0.14, y0);
+    ctx.fill();
+  }
+
+  function drawLegs() {
+    const d = state.deploy;
+    const hips = [-0.72, 0.72];
+    for (let i = 0; i < hips.length; i++) {
+      const hipX = hips[i];
+      const footX = hipX < 0 ? -1.05 - 1.45 * d : 1.05 + 1.45 * d;
+      const footY = -(BELL + (FOOT - BELL) * d);
+      const kneeX = (hipX + footX) / 2;
+      const kneeY = -3.3 - 0.7 * d;
+      ctx.strokeStyle = "#c5ccd4";
+      ctx.lineWidth = 0.13;
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+      ctx.moveTo(hipX, -2.15);
+      ctx.lineTo(kneeX, kneeY);
+      ctx.lineTo(footX, footY);
+      ctx.stroke();
+      ctx.fillStyle = "#d7dee6";
+      ctx.fillRect(footX - 0.28, footY - 0.06, 0.56, 0.1);
+    }
+  }
+
+  function drawFlaps() {
+    ctx.fillStyle = "#2a3038";
+    flap(1.58, 1);
+    flap(-1.58, -1);
+  }
+
+  function flap(x0, dir) {
+    ctx.beginPath();
+    ctx.moveTo(x0, 3.15);
+    ctx.lineTo(x0 + dir * 1.35, 3.45);
+    ctx.lineTo(x0 + dir * 1.35, 2.15);
+    ctx.lineTo(x0, 2.45);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(235, 230, 220, 0.25)";
+    ctx.lineWidth = 0.04;
+    ctx.stroke();
+  }
+
+  function drawHull() {
+    const r = 1.58;
+    ctx.beginPath();
+    ctx.moveTo(0, 6.45);
+    ctx.bezierCurveTo(0.25, 6.15, r, 4.2, r, 3.25);
+    ctx.lineTo(r, -3.45);
+    ctx.lineTo(r * 0.9, -3.75);
+    ctx.lineTo(0.58, -4.15);
+    ctx.lineTo(1.08, -BELL);
+    ctx.lineTo(-1.08, -BELL);
+    ctx.lineTo(-0.58, -4.15);
+    ctx.lineTo(-r * 0.9, -3.75);
+    ctx.lineTo(-r, -3.45);
+    ctx.lineTo(-r, 3.25);
+    ctx.bezierCurveTo(-r, 4.2, -0.25, 6.15, 0, 6.45);
+    ctx.closePath();
+
+    const metal = ctx.createLinearGradient(-r, 0, r, 0);
+    metal.addColorStop(0, "#5c656e");
+    metal.addColorStop(0.28, "#c5ced6");
+    metal.addColorStop(0.48, "#f4f7fa");
+    metal.addColorStop(0.7, "#aeb6c0");
+    metal.addColorStop(1, "#3e4650");
+    ctx.fillStyle = metal;
+    ctx.fill();
+    ctx.strokeStyle = "rgba(20, 24, 28, 0.35)";
+    ctx.lineWidth = 0.04;
+    ctx.stroke();
+
+    // Tank band and a small port.
+    ctx.strokeStyle = "rgba(40, 46, 54, 0.45)";
+    ctx.lineWidth = 0.06;
+    ctx.beginPath();
+    ctx.moveTo(-r, 2.7);
+    ctx.lineTo(r, 2.7);
+    ctx.stroke();
+
+    ctx.fillStyle = "#1b242e";
+    ctx.beginPath();
+    ctx.ellipse(0.72, 1.15, 0.22, 0.36, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(255, 255, 255, 0.35)";
+    ctx.beginPath();
+    ctx.ellipse(0.64, 1.28, 0.06, 0.1, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Bell interior.
+    ctx.fillStyle = "#6a4030";
+    ctx.fillRect(-1.12, -BELL, 2.24, 0.12);
+    ctx.fillStyle = "#2a211c";
+    ctx.beginPath();
+    ctx.moveTo(-0.42, -4.2);
+    ctx.lineTo(-0.95, -BELL + 0.02);
+    ctx.lineTo(0.95, -BELL + 0.02);
+    ctx.lineTo(0.42, -4.2);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function drawReticle(cam) {
+    const p = worldToScreen(cam, 0, 0);
+    p[1] -= 56;
+    const arm = 16;
+    ctx.save();
+    ctx.translate(p[0], p[1]);
+    ctx.strokeStyle = "rgba(226, 210, 180, 0.85)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(0, 0, 14, 0, Math.PI * 2);
+    ctx.moveTo(-arm, 0);
+    ctx.lineTo(-6, 0);
+    ctx.moveTo(6, 0);
+    ctx.lineTo(arm, 0);
+    ctx.moveTo(0, -arm);
+    ctx.lineTo(0, -6);
+    ctx.moveTo(0, 6);
+    ctx.lineTo(0, arm);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawScale(cam) {
+    const px = 10 * cam.scale;
+    const x = 78;
+    const y = cam.h - 28;
+    ctx.strokeStyle = "rgba(235, 230, 220, 0.6)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + px, y);
+    ctx.moveTo(x, y - 4);
+    ctx.lineTo(x, y + 4);
+    ctx.moveTo(x + px, y - 4);
+    ctx.lineTo(x + px, y + 4);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(235, 230, 220, 0.7)";
+    ctx.font = "11px ui-monospace, Menlo, Consolas, monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "bottom";
+    ctx.fillText("10 m", x, y - 6);
+  }
+
+  function drawVignette(w, h) {
+    const v = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.72);
+    v.addColorStop(0, "rgba(0, 0, 0, 0)");
+    v.addColorStop(1, "rgba(0, 0, 0, 0.38)");
+    ctx.fillStyle = v;
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  function drawRadar() {
+    const w = radar.width;
+    const h = radar.height;
+    const cx = w / 2;
+    const cy = h / 2 + 4;
+    const range = 48; // meters, half-span
+    const scale = (w * 0.38) / range;
+    rctx.clearRect(0, 0, w, h);
+    rctx.strokeStyle = "rgba(235, 230, 220, 0.35)";
+    rctx.lineWidth = 1;
+    rctx.beginPath();
+    rctx.arc(cx, cy, PAD_HALF * scale, 0, Math.PI * 2);
+    rctx.moveTo(cx - 34, cy);
+    rctx.lineTo(cx + 34, cy);
+    rctx.moveTo(cx, cy - 34);
+    rctx.lineTo(cx, cy + 34);
+    rctx.stroke();
+
+    rctx.strokeStyle = "rgba(226, 161, 92, 0.7)";
+    rctx.strokeRect(cx - 4, cy - 4, 8, 8);
+
+    const dx = clamp(state.x, -range, range);
+    const px = cx + dx * scale;
+    rctx.fillStyle = "#ebe6dc";
+    rctx.beginPath();
+    rctx.arc(px, cy, 3.5, 0, Math.PI * 2);
+    rctx.fill();
+    rctx.strokeStyle = "rgba(235, 230, 220, 0.85)";
+    rctx.beginPath();
+    rctx.moveTo(px, cy);
+    rctx.lineTo(px + clamp(state.vx, -20, 20) * scale * 1.6, cy);
+    rctx.stroke();
+  }
+
+  function makeStars(n) {
+    const out = [];
+    let seed = 0x51ed;
+    for (let i = 0; i < n; i++) {
+      seed = (seed * 16807) % 2147483647;
+      const a = seed / 2147483647;
+      seed = (seed * 16807) % 2147483647;
+      const b = seed / 2147483647;
+      seed = (seed * 16807) % 2147483647;
+      const c = seed / 2147483647;
+      out.push({
+        nx: a,
+        ny: b,
+        r: c < 0.08 ? 1.7 : c < 0.25 ? 1.15 : 0.7,
+        a: 0.25 + c * 0.7,
+        speed: 0.4 + a * 1.4,
+        phase: b * Math.PI * 2,
+        warm: c > 0.82
+      });
+    }
+    return out;
+  }
+
+  function makeHills() {
+    const pts = [];
+    for (let x = -220; x <= 220; x += 8) {
+      const far = Math.max(0, (Math.abs(x) - 40) / 180);
+      const lift = far * (3.2 + 2.4 * Math.sin(x * 0.07) + 1.1 * Math.sin(x * 0.17));
+      pts.push({ x: x, y: lift });
+    }
+    return pts;
+  }
+
+  function clamp(v, a, b) {
+    return Math.max(a, Math.min(b, v));
+  }
+
+  function signed(n) {
+    const v = Number(n).toFixed(1);
+    return (n >= 0 ? "+" : "") + v;
+  }
+
+  window.addEventListener("keydown", (e) => {
+    if (e.repeat) return;
+    if (e.code === "Space") {
+      e.preventDefault();
+      keys.add("Space");
+    } else if (e.code === "KeyA" || e.code === "ArrowLeft") {
+      e.preventDefault();
+      keys.add("left");
+    } else if (e.code === "KeyD" || e.code === "ArrowRight") {
+      e.preventDefault();
+      keys.add("right");
+    } else if (e.code === "KeyR") {
+      reset(0.45);
+    }
+  });
+
+  window.addEventListener("keyup", (e) => {
+    if (e.code === "Space") keys.delete("Space");
+    if (e.code === "KeyA" || e.code === "ArrowLeft") keys.delete("left");
+    if (e.code === "KeyD" || e.code === "ArrowRight") keys.delete("right");
+  });
+
+  window.addEventListener("blur", () => {
+    keys.clear();
+    pointerThrottle = false;
+    buttonGimbal = 0;
+  });
+
+  window.addEventListener("pointerdown", (e) => {
+    if (e.target.closest("button, #outcome")) return;
+    pointerThrottle = true;
+  });
+
+  window.addEventListener("pointerup", () => {
+    pointerThrottle = false;
+    buttonGimbal = 0;
+  });
+
+  window.addEventListener("pointercancel", () => {
+    pointerThrottle = false;
+    buttonGimbal = 0;
+  });
+
+  function holdButton(button, value) {
+    const down = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      buttonGimbal = value;
+    };
+    button.addEventListener("pointerdown", down);
+  }
+
+  holdButton($("gimbal-left"), -1);
+  holdButton($("gimbal-right"), 1);
+  $("reset").addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    reset(0.45);
+  });
+
+  outcomeEl.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    reset(0.45);
+  });
+
+  window.addEventListener("resize", resize);
+  reset(1.8);
+  resize();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
